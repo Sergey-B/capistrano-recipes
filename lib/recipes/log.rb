@@ -7,7 +7,7 @@ Capistrano::Configuration.instance.load do
         break if stream == :err
       end
     end
-    
+
     desc <<-DESC
     |DarkRecipes| Install log rotation script; optional args: days=7, size=5M, group (defaults to same value as :user)
     DESC

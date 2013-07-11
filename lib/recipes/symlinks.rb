@@ -1,27 +1,38 @@
 Capistrano::Configuration.instance.load do
-  # These are set to the same structure in shared <=> current
-  set :normal_symlinks, %w(tmp log config/database.yml) unless exists?(:normal_symlinks)
-  
-  # Weird symlinks go somewhere else. Weird.
-  set :weird_symlinks, { 'bundle' => 'vendor/bundle',
-                         'pids'   => 'tmp/pids' } unless exists?(:weird_symlinks)
+  namespace :symlink do
+      desc "Setup symlinks"
+      task :setup, :except => { :no_release => true } do
+        symlinks.each do |symlink|
+          symlink_path = symlink[:path]
 
-  namespace :symlinks do
-    desc "|DarkRecipes| Make all the symlinks in a single run"
-    task :make, :roles => :app, :except => { :no_release => true } do
-      commands = normal_symlinks.map do |path|
-        "rm -rf #{current_path}/#{path} && \
-         ln -s #{shared_path}/#{path} #{current_path}/#{path}"
+          dir_path = /^(.*)\/.*$/.match(symlink_path)[1]
+          run "mkdir -p #{shared_path}/#{dir_path} && touch #{shared_path}/#{symlink[:path]}"
+        end
       end
 
-      commands += weird_symlinks.map do |from, to|
-        "rm -rf #{current_path}/#{to} && \
-         ln -s #{shared_path}/#{from} #{current_path}/#{to}"
+      desc "Upload symlink files"
+      task :local_upload, :roles => :app, :except => { :no_release => true } do
+        labels = ENV['LABELS'].split(',')
+        symlinks.select { |symlink| labels.include? symlink[:label].to_s }.each { |symlink|
+          upload symlink[:path], "#{shared_path}/#{symlink[:path]}" if File.file?(symlink[:path])
+        }
       end
 
-      run <<-CMD
-        cd #{current_path} && #{commands.join(" && ")}
-      CMD
+      desc "Download symlink files from remote"
+      task :remote_download, :roles => :app, :except => { :no_release => true } do
+        labels = ENV['LABELS'].split(',')
+        symlinks.select { |symlink| labels.include? symlink[:label].to_s }.each { |symlink|
+          download "#{shared_path}/#{symlink[:path]}", symlink[:path]
+        }
+      end
+
+      desc <<-DESC
+        [internal] Updates the symlinks to the just deployed release.
+      DESC
+      task :symlink, :roles => :app, :except => { :no_release => true } do
+        symlinks.each do |symlink|
+          run "ln -nfs #{shared_path}/#{symlink[:path]} #{release_path}/#{symlink[:path]}"
+        end
+      end
     end
-  end
 end
